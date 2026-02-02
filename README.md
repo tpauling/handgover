@@ -40,11 +40,12 @@ handgover is written in go. To analyse the given structs it uses the standard [`
 ```go
 sources := []handgover.Source{
     {
-	Tag: "query",
-		Get: func(field string) (handgover.Valuer, error) {
-			return handgover.Values(req.URL.Query()[field]), nil
+	handgover.NewSource(
+		"query",
+		func(field string) (handgover.Valuer, error) {
+			return handgover.Value(req.URL.Query()[field]...), nil
 		},
-    },
+	),
 }
 ```
 
@@ -105,12 +106,12 @@ func main() {
 
 func Pick(req *http.Request, v interface{}) error {
 	sources := []handgover.Source{
-		{
-			Tag: "query",
-			Get: func(field string) (handgover.Valuer, error) {
-				return handgover.Values(req.URL.Query()[field]), nil
+		handgover.NewSource(
+			"query",
+			func(field string) (handgover.Valuer, error) {
+				return handgover.Value(req.URL.Query()[field]...), nil
 			},
-		},
+		),
 	}
 	return handgover.From(sources).To(v)
 }
@@ -127,4 +128,4 @@ Next steps would be to parse each single query parameter to your specific value 
 At this point the question came up "Is there no easier way of doing that?" - The idea of handgover was born :hatching_chick:!
 
 ## Licence
-MIT [License](https://github.com/tpauling/handgover/blob/master/LICENSE) Copyright (c) 2025 tpauling <github@pauling.io>
+MIT [License](https://github.com/tpauling/handgover/blob/master/LICENSE) Copyright (c) 2026 tpauling <github@pauling.io>

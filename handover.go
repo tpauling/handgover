@@ -182,8 +182,38 @@ func (v values) values() []string {
 // Tag contains the field tag name
 // Get is a function to get the value/values for your given field.
 type Source struct {
-	Tag string
-	Get func(string) (Valuer, error)
+	Tag   string
+	Value ValueGetter
+}
+
+func NewSource(tag string, getter Get) Source {
+	return NewSourceWithCurrent(tag,
+		func(_ any, name string) (Valuer, error) {
+			return getter(name)
+		},
+	)
+}
+
+func NewSourceWithCurrent(tag string, getter GetCurrent) Source {
+	return Source{
+		Tag:   tag,
+		Value: getter,
+	}
+}
+
+type Get func(string) (Valuer, error)
+type GetCurrent func(any, string) (Valuer, error)
+
+func (f Get) get(_ any, name string) (Valuer, error) {
+	return f(name)
+}
+
+func (f GetCurrent) get(current any, name string) (Valuer, error) {
+	return f(current, name)
+}
+
+type ValueGetter interface {
+	get(any, string) (Valuer, error)
 }
 
 type Sources []Source
@@ -210,6 +240,10 @@ func (sources Sources) To(obj interface{}) error {
 	t := valueOf.Type()
 	for i := 0; i < valueOf.NumField(); i++ {
 		for _, source := range sources {
+			if source.Value == nil {
+				continue
+			}
+
 			field := t.Field(i)
 
 			tagValue, ok := field.Tag.Lookup(source.Tag)
@@ -223,14 +257,13 @@ func (sources Sources) To(obj interface{}) error {
 			}
 
 			var values []string
-			v, err := source.Get(tagValue)
+			v, err := source.Value.get(property.Interface(), tagValue)
+			if err != nil {
+				return newError(tagValue, source.Tag, values, err)
+			}
 
 			if v != nil {
 				values = v.values()
-			}
-
-			if err != nil {
-				return newError(tagValue, source.Tag, values, err)
 			}
 
 			if len(values) == 0 {

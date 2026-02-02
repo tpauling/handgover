@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReturnValuerAsNilWithoutError(t *testing.T) {
@@ -23,18 +23,19 @@ func TestReturnValuerAsNilWithoutError(t *testing.T) {
 	s.String = "hello world"
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, string("hello world"), current)
+				require.Equal(t, "bar", field)
 				return nil, nil
 			},
-		},
+		),
 	}
 	err := From(sources).To(&s)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, "hello world", s.String)
+	require.Equal(t, "hello world", s.String)
 }
 
 func TestReturnValuerAsNilWithError(t *testing.T) {
@@ -44,36 +45,38 @@ func TestReturnValuerAsNilWithError(t *testing.T) {
 	s.String = "hello world"
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, name string) (Valuer, error) {
+				require.Equal(t, string("hello world"), current)
+				require.Equal(t, "bar", name)
+
 				return nil, errors.New("test error")
 			},
-		},
+		),
 	}
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
-	assert.True(t, errors.As(err, &parsedErr))
+	require.True(t, errors.As(err, &parsedErr))
 
-	assert.Equal(t, "", parsedErr.Value)
-	assert.Equal(t, "hello world", s.String)
+	require.Equal(t, "", parsedErr.Value)
+	require.Equal(t, "hello world", s.String)
 }
 
 func TestFillWithNilStruct(t *testing.T) {
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSource(
+			"foo",
+			func(name string) (Valuer, error) {
+				require.Equal(t, "bar", name)
 				return Value("helloworld"), nil
 			},
-		},
+		),
 	}
-	assert.Error(t, From(sources).To(nil))
+	require.Error(t, From(sources).To(nil))
 }
 
 func TestFillWithNoSource(t *testing.T) {
@@ -84,7 +87,7 @@ func TestFillWithNoSource(t *testing.T) {
 		}
 		sources []Source
 	)
-	assert.NoError(t, From(sources).To(&s))
+	require.NoError(t, From(sources).To(&s))
 }
 
 func TestFillPointer(t *testing.T) {
@@ -94,18 +97,19 @@ func TestFillPointer(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, (*string)(nil), current)
+				require.Equal(t, "bar", field)
 				return Value("helloworld"), nil
 			},
-		},
+		),
 	}
-	assert.NoError(t, From(sources).To(&s))
+	require.NoError(t, From(sources).To(&s))
 
-	assert.NotNil(t, s.Pointer)
-	assert.Equal(t, "helloworld", *s.Pointer)
+	require.NotNil(t, s.Pointer)
+	require.Equal(t, "helloworld", *s.Pointer)
 }
 
 func TestFillSlice(t *testing.T) {
@@ -113,33 +117,43 @@ func TestFillSlice(t *testing.T) {
 	var s struct {
 		Slice   []string         `foo:"bar"`
 		Bytes   []byte           `john:"doe"`
-		RawJSON *json.RawMessage `john:"doe"`
+		RawJSON *json.RawMessage `jane:"doe"`
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
-				return Value([]string{"hello", "world"}...), nil
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, []string(nil), current)
+				require.Equal(t, "bar", field)
+				return Value("hello", "world"), nil
 			},
-		},
-		{
-			Tag: "john",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "doe", field)
+		),
+		NewSourceWithCurrent(
+			"john",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, []byte(nil), current)
+				require.Equal(t, "doe", field)
 				return Value(`{ "some": "json" }`), nil
 			},
-		},
+		),
+		NewSourceWithCurrent(
+			"jane",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, (*json.RawMessage)(nil), current)
+				require.Equal(t, "doe", field)
+				return Value(`{ "some": "json" }`), nil
+			},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
+	require.NoError(t, From(sources).To(&s))
 
-	assert.Equal(t, []string{"hello", "world"}, s.Slice)
-	assert.Equal(t, []byte(`{ "some": "json" }`), s.Bytes)
+	require.Equal(t, []string{"hello", "world"}, s.Slice)
+	require.Equal(t, []byte(`{ "some": "json" }`), s.Bytes)
 
-	assert.NotNil(t, s.RawJSON)
-	assert.Equal(t, json.RawMessage(`{ "some": "json" }`), *s.RawJSON)
+	require.NotNil(t, s.RawJSON)
+	require.Equal(t, json.RawMessage(`{ "some": "json" }`), *s.RawJSON)
 }
 
 func TestFillSliceWithInvalidValue(t *testing.T) {
@@ -150,26 +164,27 @@ func TestFillSliceWithInvalidValue(t *testing.T) {
 	s.Slice = []int{1}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, []int{1}, current)
+				require.Equal(t, "bar", field)
 				return Value([]string{"invalid", "value"}...), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
-	assert.True(t, errors.As(err, &parsedErr))
+	require.True(t, errors.As(err, &parsedErr))
 
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, 1, s.Slice[0])
+	require.Equal(t, []int{1}, s.Slice)
 }
 
 func TestFillString(t *testing.T) {
@@ -179,16 +194,17 @@ func TestFillString(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, string(""), current)
+				require.Equal(t, "bar", field)
 				return Value("helloworld"), nil
 			},
-		},
+		),
 	}
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, "helloworld", s.String)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, "helloworld", s.String)
 }
 
 func TestFillTimeDuration(t *testing.T) {
@@ -198,17 +214,18 @@ func TestFillTimeDuration(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, time.Duration(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1h"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, time.Minute*60, s.Duration)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, time.Minute*60, s.Duration)
 }
 
 func TestFillTimeDurationWithInvalidValue(t *testing.T) {
@@ -219,26 +236,27 @@ func TestFillTimeDurationWithInvalidValue(t *testing.T) {
 	s.Duration = time.Second
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, time.Second, current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "1", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "1", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, time.Second, s.Duration)
+	require.Equal(t, time.Second, s.Duration)
 }
 
 func TestFillInt(t *testing.T) {
@@ -248,16 +266,17 @@ func TestFillInt(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, int(1), s.Int)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, int(1), s.Int)
 }
 
 func TestFillIntWithInvalidValue(t *testing.T) {
@@ -268,26 +287,27 @@ func TestFillIntWithInvalidValue(t *testing.T) {
 	s.Int = 1
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, 1, s.Int)
+	require.Equal(t, 1, s.Int)
 }
 
 func TestFillInt8(t *testing.T) {
@@ -296,16 +316,17 @@ func TestFillInt8(t *testing.T) {
 		Int8 int8 `foo:"bar"`
 	}
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int8(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, int8(1), s.Int8)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, int8(1), s.Int8)
 }
 
 func TestFillInt8WithInvalidValue(t *testing.T) {
@@ -313,26 +334,28 @@ func TestFillInt8WithInvalidValue(t *testing.T) {
 	var s struct {
 		Int8 int8 `foo:"bar"`
 	}
+	s.Int8 = 1
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int8(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 }
 
 func TestFillInt16(t *testing.T) {
@@ -342,17 +365,18 @@ func TestFillInt16(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int16(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, int16(1), s.Int16)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, int16(1), s.Int16)
 }
 
 func TestFillInt16WithInvalidValue(t *testing.T) {
@@ -363,26 +387,27 @@ func TestFillInt16WithInvalidValue(t *testing.T) {
 	s.Int16 = int16(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int16(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, int16(1), s.Int16)
+	require.Equal(t, int16(1), s.Int16)
 }
 
 func TestFillInt32(t *testing.T) {
@@ -392,17 +417,18 @@ func TestFillInt32(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int32(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, int32(1), s.Int32)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, int32(1), s.Int32)
 }
 
 func TestFillInt32WithInvalidValue(t *testing.T) {
@@ -413,26 +439,27 @@ func TestFillInt32WithInvalidValue(t *testing.T) {
 	s.Int32 = int32(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int32(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, int32(1), s.Int32)
+	require.Equal(t, int32(1), s.Int32)
 }
 
 func TestFillInt64(t *testing.T) {
@@ -442,17 +469,18 @@ func TestFillInt64(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int64(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, int64(1), s.Int64)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, int64(1), s.Int64)
 }
 
 func TestFillInt64WithInvalidValue(t *testing.T) {
@@ -463,26 +491,27 @@ func TestFillInt64WithInvalidValue(t *testing.T) {
 	s.Int64 = int64(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, int64(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, int64(1), s.Int64)
+	require.Equal(t, int64(1), s.Int64)
 }
 
 func TestFillUInt(t *testing.T) {
@@ -492,17 +521,18 @@ func TestFillUInt(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, uint(1), s.UInt)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, uint(1), s.UInt)
 }
 
 func TestFillUIntWithInvalidValue(t *testing.T) {
@@ -513,26 +543,27 @@ func TestFillUIntWithInvalidValue(t *testing.T) {
 	s.UInt = uint(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, uint(1), s.UInt)
+	require.Equal(t, uint(1), s.UInt)
 }
 
 func TestFillUInt8(t *testing.T) {
@@ -542,17 +573,18 @@ func TestFillUInt8(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint8(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, uint8(1), s.UInt8)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, uint8(1), s.UInt8)
 }
 
 func TestFillUInt8WithInvalidValue(t *testing.T) {
@@ -563,26 +595,27 @@ func TestFillUInt8WithInvalidValue(t *testing.T) {
 	s.UInt8 = uint8(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint8(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, uint8(1), s.UInt8)
+	require.Equal(t, uint8(1), s.UInt8)
 }
 
 func TestFillUInt16(t *testing.T) {
@@ -592,17 +625,18 @@ func TestFillUInt16(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint16(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, uint16(1), s.UInt16)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, uint16(1), s.UInt16)
 }
 
 func TestFillUInt16WithInvalidValue(t *testing.T) {
@@ -613,26 +647,27 @@ func TestFillUInt16WithInvalidValue(t *testing.T) {
 	s.UInt16 = uint16(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint16(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, uint16(1), s.UInt16)
+	require.Equal(t, uint16(1), s.UInt16)
 }
 
 func TestFillUInt32(t *testing.T) {
@@ -642,17 +677,18 @@ func TestFillUInt32(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint32(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, uint32(1), s.UInt32)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, uint32(1), s.UInt32)
 }
 
 func TestFillUInt32WithInvalidValue(t *testing.T) {
@@ -663,26 +699,27 @@ func TestFillUInt32WithInvalidValue(t *testing.T) {
 	s.UInt32 = uint32(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint32(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, uint32(1), s.UInt32)
+	require.Equal(t, uint32(1), s.UInt32)
 }
 
 func TestFillUInt64(t *testing.T) {
@@ -692,17 +729,18 @@ func TestFillUInt64(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint64(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, uint64(1), s.UInt64)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, uint64(1), s.UInt64)
 }
 
 func TestFillUInt64WithInvalidValue(t *testing.T) {
@@ -713,26 +751,27 @@ func TestFillUInt64WithInvalidValue(t *testing.T) {
 	s.UInt64 = uint64(1)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, uint64(1), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, uint64(1), s.UInt64)
+	require.Equal(t, uint64(1), s.UInt64)
 }
 
 func TestFillBool(t *testing.T) {
@@ -742,17 +781,18 @@ func TestFillBool(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, false, current)
+				require.Equal(t, "bar", field)
 				return Value("true"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, true, s.Bool)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, true, s.Bool)
 }
 
 func TestFillBoolWithInvalidValue(t *testing.T) {
@@ -763,26 +803,27 @@ func TestFillBoolWithInvalidValue(t *testing.T) {
 	s.Bool = true
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, true, current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.True(t, s.Bool)
+	require.True(t, s.Bool)
 }
 
 func TestFillFloat32(t *testing.T) {
@@ -791,17 +832,18 @@ func TestFillFloat32(t *testing.T) {
 		Float32 float32 `foo:"bar"`
 	}
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, float32(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1.5"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, float32(1.5), s.Float32)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, float32(1.5), s.Float32)
 }
 
 func TestFillFloat32WithInvalidValue(t *testing.T) {
@@ -812,26 +854,27 @@ func TestFillFloat32WithInvalidValue(t *testing.T) {
 	s.Float32 = float32(1.5)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, float32(1.5), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, float32(1.5), s.Float32)
+	require.Equal(t, float32(1.5), s.Float32)
 }
 
 func TestFillFloat64(t *testing.T) {
@@ -840,17 +883,18 @@ func TestFillFloat64(t *testing.T) {
 		Float64 float64 `foo:"bar"`
 	}
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, float64(0), current)
+				require.Equal(t, "bar", field)
 				return Value("1.5"), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, float64(1.5), s.Float64)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, float64(1.5), s.Float64)
 }
 
 func TestFillFloat64WithInvalidValue(t *testing.T) {
@@ -861,26 +905,27 @@ func TestFillFloat64WithInvalidValue(t *testing.T) {
 	s.Float64 = float64(1.5)
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, float64(1.5), current)
+				require.Equal(t, "bar", field)
 				return Value("invalid"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, "invalid", parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, "invalid", parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, float64(1.5), s.Float64)
+	require.Equal(t, float64(1.5), s.Float64)
 }
 
 func TestFillStruct(t *testing.T) {
@@ -891,17 +936,18 @@ func TestFillStruct(t *testing.T) {
 		} `foo:"bar"`
 	}
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, s.Struct, current)
+				require.Equal(t, "bar", field)
 				return Value(`{ "hello" : "world" }`), nil
 			},
-		},
+		),
 	}
 
-	assert.NoError(t, From(sources).To(&s))
-	assert.Equal(t, "world", s.Struct.Hello)
+	require.NoError(t, From(sources).To(&s))
+	require.Equal(t, "world", s.Struct.Hello)
 }
 
 func TestFillStructWithInvalidJson(t *testing.T) {
@@ -914,26 +960,28 @@ func TestFillStructWithInvalidJson(t *testing.T) {
 	s.Struct.Hello = "world"
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, s.Struct, current)
+				require.Equal(t, "world", s.Struct.Hello)
+				require.Equal(t, "bar", field)
 				return Value(`{ "hello" : invalidjson`), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Equal(t, `{ "hello" : invalidjson`, parsedErr.Value)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Equal(t, `{ "hello" : invalidjson`, parsedErr.Value)
+	require.Error(t, parsedErr.InnerError)
 
-	assert.Equal(t, "world", s.Struct.Hello)
+	require.Equal(t, "world", s.Struct.Hello)
 }
 
 func TestFillUnsupportedType(t *testing.T) {
@@ -943,23 +991,24 @@ func TestFillUnsupportedType(t *testing.T) {
 	}
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, chan string(nil), current)
+				require.Equal(t, "bar", field)
 				return Value("helloworld"), nil
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Error(t, parsedErr.InnerError)
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Error(t, parsedErr.InnerError)
 }
 
 func TestFillIfSourceReturnsAnError(t *testing.T) {
@@ -970,24 +1019,25 @@ func TestFillIfSourceReturnsAnError(t *testing.T) {
 	s.String = "hello world"
 
 	sources := []Source{
-		{
-			Tag: "foo",
-			Get: func(field string) (Valuer, error) {
-				assert.Equal(t, "bar", field)
+		NewSourceWithCurrent(
+			"foo",
+			func(current any, field string) (Valuer, error) {
+				require.Equal(t, "hello world", s.String)
+				require.Equal(t, "bar", field)
 				return Value(""), errors.New("I am a test error")
 			},
-		},
+		),
 	}
 
 	err := From(sources).To(&s)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	var parsedErr Error
 
-	assert.True(t, errors.As(err, &parsedErr))
-	assert.Equal(t, "bar", parsedErr.Field)
-	assert.Error(t, parsedErr.InnerError)
-	assert.Equal(t, "I am a test error", parsedErr.InnerError.Error())
+	require.True(t, errors.As(err, &parsedErr))
+	require.Equal(t, "bar", parsedErr.Field)
+	require.Error(t, parsedErr.InnerError)
+	require.Equal(t, "I am a test error", parsedErr.InnerError.Error())
 
-	assert.Equal(t, "hello world", s.String)
+	require.Equal(t, "hello world", s.String)
 }
